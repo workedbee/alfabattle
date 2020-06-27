@@ -27,6 +27,14 @@ public class Branch {
   public Branch() {
   }
 
+  public Branch(Branch other) {
+    this.id = other.getId();
+    this.title = other.getTitle();
+    this.lat = other.getLat();
+    this.lon = other.getLon();
+    this.address = other.getAddress();
+  }
+
   public Long getId() {
     return id;
   }
