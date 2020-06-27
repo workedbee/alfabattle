@@ -2,6 +2,8 @@ package com.alfa.alfabattle.bargaining.controller;
 
 import com.alfa.alfabattle.bargaining.model.Branch;
 import com.alfa.alfabattle.bargaining.repository.BranchRepository;
+import com.alfa.alfabattle.bargaining.services.DistanceCalculator;
+import com.alfa.alfabattle.bargaining.services.LoadPredictor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,8 +22,15 @@ public class BranchController {
 
   private BranchRepository branchRepository;
 
+  private LoadPredictor loadPredictor;
+
+  private DistanceCalculator distanceCalculator = new DistanceCalculator();
+
   @Autowired
-  public BranchController(BranchRepository branchRepository) {
+  public BranchController(
+          LoadPredictor loadPredictor,
+          BranchRepository branchRepository) {
+    this.loadPredictor = loadPredictor;
     this.branchRepository = branchRepository;
   }
 
@@ -50,8 +59,7 @@ public class BranchController {
       branchIterator.forEach(branches::add);
 
       Optional<BranchWithDistance> min = branches.stream()
-              .map(branch -> new BranchWithDistance(branch, Long.valueOf(calcDistance(branch, lat, lon))
-                      .intValue()))
+              .map(branch -> new BranchWithDistance(branch, distanceCalculator.calc(branch, lat, lon)))
               .min(Comparator.comparingInt(BranchWithDistance::getDistance));
 
       if (min.isPresent()) {
@@ -65,27 +73,29 @@ public class BranchController {
     }
   }
 
-  private long calcDistance(Branch branch, Double lat, Double lon) {
-    int EARTH_RADIUS = 6371000; // in meters
-    double fi1 = Math.toRadians(branch.getLat()); //широта 1
-    double fi2 = Math.toRadians(lat); //широта 2
-    double la1 = Math.toRadians(branch.getLon()); //долгота 1
-    double la2 = Math.toRadians(lon); //долгота 2
+  @GetMapping(path = "/branches/{id}/predict", produces = "application/json")
+  @ResponseBody
+  public ResponseEntity<?> getLoad(
+          @PathVariable Long id,
+            @RequestParam(name="dayOfWeek") int dayOfWeek,
+          @RequestParam(name="hourOfDay") int hourOfDay) {
+    try {
+      Optional<Branch> branch = branchRepository.findById(id);
 
-    double x = Math.sin((fi2-fi1)/2);
-    x = x*x;
-    double y = Math.sin((la2-la1)/2);
-    y = y*y;
-    y = y * Math.cos(fi1) * Math.cos(fi1);
-    return Math.round(
-            2 * EARTH_RADIUS * Math.asin(
-                    Math.sqrt(x+y))
-    );
+      if (branch.isPresent()) {
+        return ResponseEntity.ok(
+                new BranchWithLoad(branch.get(), dayOfWeek, hourOfDay,
+                        loadPredictor.predictTime(branch.get(), dayOfWeek, hourOfDay))
+        );
+      } else {
+        Map<String, String> errors = Collections.singletonMap("status", "branch not found");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errors);
+      }
+    } catch (Exception ex) {
+      return ResponseEntity.badRequest().build();
+    }
   }
 
-  private double fromGradToRadian(double grad) {
-    return grad * Math.PI / 180;
-  }
 
   public static class BranchWithDistance extends Branch {
     private int distance;
@@ -101,6 +111,43 @@ public class BranchController {
 
     public void setDistance(int distance) {
       this.distance = distance;
+    }
+  }
+
+  public static class BranchWithLoad extends Branch {
+    private int dayOfWeek;
+    private int hourOfDay;
+    private int predicting;
+
+    public BranchWithLoad(Branch branch, int dayOfWeek, int hourOfDay, int predicting) {
+      super(branch);
+      this.dayOfWeek = dayOfWeek;
+      this.hourOfDay = hourOfDay;
+      this.predicting = predicting;
+    }
+
+    public int getDayOfWeek() {
+      return dayOfWeek;
+    }
+
+    public void setDayOfWeek(int dayOfWeek) {
+      this.dayOfWeek = dayOfWeek;
+    }
+
+    public int getHourOfDay() {
+      return hourOfDay;
+    }
+
+    public void setHourOfDay(int hourOfDay) {
+      this.hourOfDay = hourOfDay;
+    }
+
+    public int getPredicting() {
+      return predicting;
+    }
+
+    public void setPredicting(int predicting) {
+      this.predicting = predicting;
     }
   }
 }

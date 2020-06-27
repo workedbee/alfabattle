@@ -3,7 +3,7 @@ package com.alfa.alfabattle.bargaining.model;
 import javax.persistence.*;
 
 /**
- * Media to store information about page
+ * Media to store information about branch
  */
 @Entity
 @Table(name = "branches")
